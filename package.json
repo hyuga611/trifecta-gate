@@ -1,0 +1,40 @@
+{
+  "name": "trifecta-gate",
+  "version": "0.1.0",
+  "description": "Fail CI when one AI agent can read your secrets, read an attacker's text, and send data out — the lethal trifecta, found statically in Claude Code, Codex and Cursor configuration. Zero-dependency, nothing leaves your machine.",
+  "type": "module",
+  "bin": {
+    "trifecta-gate": "src/check.mjs"
+  },
+  "exports": {
+    ".": "./src/scan.mjs",
+    "./load": "./src/load.mjs",
+    "./codex": "./src/codex.mjs",
+    "./cursor": "./src/cursor.mjs"
+  },
+  "files": [
+    "src"
+  ],
+  "scripts": {
+    "poc": "node src/check.mjs examples/bad",
+    "selfcheck": "node src/check.mjs examples/good",
+    "test": "node --test"
+  },
+  "keywords": [
+    "lethal-trifecta",
+    "prompt-injection",
+    "ai-agent",
+    "claude-code",
+    "mcp",
+    "security",
+    "linter",
+    "ci",
+    "codex",
+    "cursor"
+  ],
+  "license": "MIT",
+  "author": "hyuga611",
+  "engines": {
+    "node": ">=18"
+  }
+}

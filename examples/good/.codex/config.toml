@@ -1,0 +1,4 @@
+# Commands run in a sandbox that can write the workspace but has no network.
+# Leaving the sandbox asks first.
+sandbox_mode = "workspace-write"
+approval_policy = "on-request"

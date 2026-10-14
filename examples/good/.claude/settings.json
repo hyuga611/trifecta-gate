@@ -1,0 +1,6 @@
+{
+  "permissions": {
+    "allow": ["mcp__github__get_*", "mcp__github__list_*"],
+    "ask": ["mcp__github__create_*", "mcp__github__add_*", "WebFetch"]
+  }
+}
