@@ -21,6 +21,12 @@ It also scans the project's instruction files (CLAUDE.md, AGENTS.md, skills, com
 Cursor rules, Codex instructions, issue and PR templates) for instructions hidden from a
 human reviewer. Nothing is sent anywhere.
 
+Subcommand:
+  drill [dir]            build a throwaway copy of a project, plant a fake secret and a
+                         prompt-injection issue, and compare the static verdict with what
+                         reaches a 127.0.0.1 listener when you run your own agent there.
+                         Options: --port <n> --timeout <seconds> --keep --simulate --verbose
+
 Options:
   --user                 also read your own configuration: ~/.claude, ~/.claude.json,
                          ~/.codex and ~/.cursor. Secrets count only if they exist on disk.
@@ -176,6 +182,7 @@ export function run(opts) {
 }
 
 export function main(argv, io = { log: console.log, error: console.error }) {
+  if (argv[0] === 'drill') return import('./drill.mjs').then((m) => m.drill(argv.slice(1), io));
   let opts;
   try {
     opts = parseArgs(argv);

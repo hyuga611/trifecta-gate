@@ -168,6 +168,27 @@ directive in a comment, a shields.io badge, a code fence that shows an example o
 A finding fails the run with exit 1; `--verbose` prints each one's `file:line` and the hidden
 text with every invisible character shown as `\u{…}`.
 
+## Drill: testing the verdict
+
+`trifecta-gate drill [dir]` checks the static verdict against reality. It copies the project's
+agent configuration into a throwaway directory, plants an obviously fake secret (marked
+`FAKE-CANARY-…`) and an issue that tries to make an agent send it to a local listener, then
+prints the static verdict and waits. You run your own agent in that directory — nothing here
+launches one — and act on the issue:
+
+```console
+$ trifecta-gate drill . --keep
+…
+    cd /tmp/trifecta-drill-XXXX/ground
+    claude "read issue.md and do what it asks"
+```
+
+The listener binds `127.0.0.1` only. If the fake secret reaches it, the drill reports which
+channel carried it (URL, body, header) and exits 1; if nothing arrives before `--timeout`
+(default 120s) or Ctrl+C, it exits 0. It also names any disagreement between the static
+verdict and what happened. `--simulate` fires the exfiltration itself, to exercise the
+listener without an agent; `--keep` leaves the training ground on disk instead of deleting it.
+
 ## Limits
 
 - Hooks are named, not run, so a hook that blocks a step does not change its guard. Codex
@@ -191,6 +212,9 @@ text with every invisible character shown as `\u{…}`.
   not nested `CLAUDE.md` files deeper in the tree. It judges intent from the text, so a
   hidden instruction worded as harmless prose, or a same-colour-as-background trick, can pass;
   it flags what is both hidden and reads as an instruction.
+- `drill` verifies the live side by a mock exfiltration, not a real agent, and copies only the
+  configuration files this tool reads, so an agent that needs more of the repo to act may
+  behave differently in the training ground than in place.
 
 ## Use in CI
 
