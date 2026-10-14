@@ -87,18 +87,33 @@ prefix_rule(["rm", "-rf"], "forbidden")
   ]);
 });
 
-test('MCP approval_mode: prompt asks, writes asks only before sending, unset is assumed silent', () => {
-  const server = (mode) => (root) =>
-    trusted(root, `[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "@modelcontextprotocol/server-github"]\n${mode}`);
-  const r = (mode) => codex(({ root }) => ({ '~/.codex/config.toml': server(mode)(root), '.codex/x': '' }));
+test('MCP approval_mode follows Codex: unset means auto, which asks before tools that are not read-only', () => {
+  const r = (top, mode = '') =>
+    codex(({ root }) => ({
+      '~/.codex/config.toml': trusted(
+        root,
+        `${top}
+[mcp_servers.github]
+command = "npx"
+args = ["-y", "@modelcontextprotocol/server-github"]
+${mode}`,
+      ),
+      '.codex/x': '',
+    }));
   const mcp = (res, leg) => res.agents[0].legs[leg].find((i) => i.id === 'mcp:github');
-  assert.equal(mcp(r('default_tools_approval_mode = "prompt"'), 'send').guard, 'human');
-  assert.equal(mcp(r('default_tools_approval_mode = "writes"'), 'send').guard, 'human');
-  assert.equal(mcp(r('default_tools_approval_mode = "writes"'), 'untrusted').guard, 'open');
+  assert.equal(mcp(r('', 'default_tools_approval_mode = "prompt"'), 'untrusted').guard, 'human');
+  assert.equal(mcp(r('', 'default_tools_approval_mode = "writes"'), 'send').guard, 'human');
+  assert.equal(mcp(r('', 'default_tools_approval_mode = "writes"'), 'untrusted').guard, 'open');
+  assert.equal(mcp(r('', 'default_tools_approval_mode = "approve"'), 'send').guard, 'open');
   const unset = r('');
-  assert.equal(mcp(unset, 'send').guard, 'open');
-  assert.match(mcp(unset, 'send').reason, /does not document the default/);
-  assert.equal(weakest(unset, 'codex'), 'open');
+  assert.equal(mcp(unset, 'send').guard, 'human');
+  assert.match(mcp(unset, 'send').reason, /approval_mode unset \(auto\)/);
+  assert.equal(mcp(unset, 'untrusted').guard, 'open');
+  assert.equal(mcp(r('approval_policy = "never"\nsandbox_mode = "read-only"'), 'send').guard, 'blocked');
+  assert.equal(mcp(r('approval_policy = "never"\nsandbox_mode = "danger-full-access"'), 'send').guard, 'open');
+  const reviewed = mcp(r('approvals_reviewer = "auto_review"'), 'send');
+  assert.equal(reviewed.guard, 'model');
+  assert.match(reviewed.reason, /subagent/);
 });
 
 test('disabled_tools removes a tool from a leg', () => {

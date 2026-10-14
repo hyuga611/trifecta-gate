@@ -122,7 +122,13 @@ export function scan(config) {
     else unclassified.push(srv.name);
   }
 
-  const unit = (agent, extraAllow = []) => assess(buildLegs(config, servers, agent, extraAllow));
+  // With more than one mode in play, each unit is reported in the mode that leaves it weakest.
+  const modes = [config.mode, ...(config.alsoMode ? [config.alsoMode] : [])];
+  const strength = (r) => (r.weakest ? rank(r.weakest.guard) : GUARDS.length);
+  const unit = (agent, extraAllow = []) =>
+    modes
+      .map((mode, i) => ({ ...assess(buildLegs({ ...config, mode }, servers, agent, extraAllow)), ...(i && { mode }) }))
+      .reduce((a, b) => (strength(b) < strength(a) ? b : a));
 
   const main = { name: 'main', file: null, ...unit({}) };
   const agents = [main, ...config.agents.map((a) => ({ name: a.name, file: a.file, ...unit(a) }))];
@@ -153,7 +159,7 @@ export function scan(config) {
 
   return {
     platform: 'Claude Code',
-    setup: `mode: ${config.mode} (${config.modeSource})`,
+    setup: `mode: ${config.mode} (${config.modeSource})${config.alsoMode ? `; also checked: ${config.alsoMode}, for sessions without auto mode` : ''}`,
     mode: config.mode,
     modeSource: config.modeSource,
     agents,

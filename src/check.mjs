@@ -39,7 +39,7 @@ Guards, weakest first:
   human    a permission prompt asks a person
   blocked  a rule, the sandbox or a setting refuses the step
 
-Exit codes: 0 pass, 1 a path at or below --fail-on exists, 2 usage error.`;
+Exit codes: 0 pass, 1 a path at or below --fail-on exists, 2 usage error or unreadable configuration.`;
 
 export function parseArgs(argv) {
   const opts = { root: '.', user: false, mode: undefined, cursorMode: undefined, failOn: 'open', json: false, verbose: false };
@@ -90,7 +90,7 @@ function legSummary(unit) {
 
 function formatUnit(unit, failOn, verbose) {
   const lines = [];
-  const where = unit.file ? ` (${unit.file})` : '';
+  const where = `${unit.file ? ` (${unit.file})` : ''}${unit.mode ? ` [in ${unit.mode} mode]` : ''}`;
   const { weakest } = unit;
   if (!weakest) {
     const missing = LEGS.filter((l) => !unit.legs[l].some((i) => i.guard !== 'blocked')).map((l) => LEG_TITLES[l]);

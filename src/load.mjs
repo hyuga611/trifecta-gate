@@ -1,6 +1,6 @@
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs';
 import { homedir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { secretTargets } from './catalog.mjs';
 import { fromPosix, parseRule, resolveDir, toPosix } from './match.mjs';
 
@@ -50,13 +50,26 @@ const toolList = (v) =>
     ? undefined
     : v.replace(/^\[|\]$/g, '').split(/,\s*|\s+(?=[A-Z]|mcp__)/).map((s) => s.trim().replace(/^["']|["']$/g, '')).filter(Boolean);
 
+// Git checks a symlink out as a small text file holding its target when symlinks are off
+// (the Windows default), so a skills folder can arrive as a file.
+function realDir(path) {
+  if (!path || !existsSync(path)) return null;
+  const st = statSync(path);
+  if (st.isDirectory()) return path;
+  if (st.size > 1024) return null;
+  const target = readFileSync(path, 'utf8').trim();
+  const resolved = target && !target.includes('\n') ? resolve(dirname(path), target) : null;
+  return resolved && existsSync(resolved) && statSync(resolved).isDirectory() ? resolved : null;
+}
+
 function markdownUnits(dir, nested) {
-  if (!dir || !existsSync(dir)) return [];
+  const real = realDir(dir);
+  if (!real) return [];
   const out = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const file = nested ? join(dir, entry.name, 'SKILL.md') : join(dir, entry.name);
-    if (nested ? entry.isDirectory() && existsSync(file) : entry.isFile() && entry.name.endsWith('.md')) {
-      out.push({ file, meta: frontmatter(file), fallback: entry.name.replace(/\.md$/, '') });
+  for (const name of readdirSync(real)) {
+    const file = nested ? join(real, name, 'SKILL.md') : join(real, name);
+    if (nested ? existsSync(file) : name.endsWith('.md') && statSync(file).isFile()) {
+      out.push({ file, meta: frontmatter(file), fallback: name.replace(/\.md$/, '') });
     }
   }
   return out;
@@ -209,6 +222,7 @@ export function loadConfig({ root = '.', user = false, home = homedir(), mode, m
     missingSecrets: env.missingSecrets,
     mode: resolved.mode,
     modeSource: resolved.source,
+    alsoMode: resolved.also,
     rules,
     workingDirs,
     blockOutside,
@@ -241,7 +255,9 @@ function resolveMode(flag, sources, disableAuto) {
     if (m === 'auto' && disableAuto) continue;
     return { mode: m, source: s.file };
   }
+  // Sessions where auto mode is off start in default mode, which keeps the broad allow
+  // rules auto mode drops.
   return disableAuto
     ? { mode: 'default', source: 'built-in default (auto mode disabled)' }
-    : { mode: 'auto', source: 'built-in default for interactive sessions' };
+    : { mode: 'auto', source: 'built-in default for interactive sessions', also: 'default' };
 }

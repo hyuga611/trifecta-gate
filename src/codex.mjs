@@ -167,6 +167,7 @@ export function loadCodex({ root = '.', user = false, home = homedir() } = {}) {
   const approvalSetting = pick('approval_policy', trusted ? ['on-request', 'default for a trusted project'] : ['untrusted', 'default for an untrusted project']);
   const approval = { ...approvalOf(approvalSetting.value), source: approvalSetting.source };
   const network = pick('sandbox_workspace_write', [{}, '']).value.network_access === true;
+  const reviewer = pick('approvals_reviewer', ['user', 'default']);
   const legacySearch = merged.tools?.web_search;
   const search = pick('web_search', [
     legacySearch === true ? 'live' : legacySearch === false ? 'disabled' : sandbox.value === 'danger-full-access' ? 'live' : 'cached',
@@ -216,6 +217,7 @@ export function loadCodex({ root = '.', user = false, home = homedir() } = {}) {
     trust,
     sandbox,
     approval,
+    reviewer,
     network,
     search,
     rules,
@@ -251,7 +253,7 @@ function evaluateShell(probe, leg, cfg) {
   }
   const mode = cfg.sandbox.value;
   if (mode === 'danger-full-access') return { guard: 'open', reason: 'sandbox_mode = danger-full-access runs commands unsandboxed' };
-  if (!net) return { guard: 'open', reason: `runs in the ${mode} sandbox, assumed not to limit reads to the workspace` };
+  if (!net) return { guard: 'open', reason: `runs in the ${mode} sandbox, which can read the whole disk` };
   if (mode === 'workspace-write' && cfg.network) {
     return { guard: 'open', reason: 'sandbox_workspace_write.network_access = true lets sandboxed commands reach the network' };
   }
@@ -263,13 +265,23 @@ function evaluateShell(probe, leg, cfg) {
   return { guard: 'human', reason: `the ${mode} sandbox has no network; running it outside needs approval` };
 }
 
-function evaluateMcp(probe, leg) {
+// Mirrors codex-rs/core/src/mcp_tool_call.rs: the mode defaults to auto, and auto and writes
+// skip the prompt only for tools the server marks read-only.
+function evaluateMcp(probe, leg, cfg) {
   const s = probe.srv.conf;
-  const mode = s.tools?.[probe.name]?.approval_mode ?? s.default_tools_approval_mode;
-  if (mode === 'prompt') return { guard: 'human', reason: `approval_mode = prompt for ${probe.server}` };
-  if (mode === 'writes' && leg === 'send') return { guard: 'human', reason: `approval_mode = writes asks before ${probe.name}` };
-  if (mode) return { guard: 'open', reason: `approval_mode = ${mode} for ${probe.server}` };
-  return { guard: 'open', reason: 'no approval_mode set; Codex does not document the default, assumed no prompt' };
+  const set = s.tools?.[probe.name]?.approval_mode ?? s.default_tools_approval_mode;
+  const mode = set ?? 'auto';
+  const named = set ? `approval_mode = ${mode}` : 'approval_mode unset (auto)';
+  const { policy } = cfg.approval;
+  if (mode === 'approve') return { guard: 'open', reason: `${named} for ${probe.server}` };
+  if (policy === 'never' && cfg.sandbox.value === 'danger-full-access') {
+    return { guard: 'open', reason: 'approval_policy = never with danger-full-access approves every MCP call' };
+  }
+  if (mode !== 'prompt' && leg !== 'send') {
+    return { guard: 'open', reason: `${named} asks only for tools not marked read-only; ${probe.name} is assumed to be marked` };
+  }
+  if (policy === 'never') return { guard: 'blocked', reason: `${named} asks before ${probe.name}, and approval_policy = never denies it` };
+  return { guard: 'human', reason: `${named} asks before ${probe.name}` };
 }
 
 const usableTool = (srv, name) => {
@@ -282,8 +294,9 @@ export function scanCodex(cfg) {
   const { ctx } = cfg;
   const evaluate = (probe, leg) => {
     if (probe.tool === 'web_search') return { guard: 'open', reason: `web_search = ${cfg.search.value} (${cfg.search.source})` };
-    if (probe.tool === 'mcp') return evaluateMcp(probe, leg);
-    return evaluateShell(probe, leg, cfg);
+    const verdict = probe.tool === 'mcp' ? evaluateMcp(probe, leg, cfg) : evaluateShell(probe, leg, cfg);
+    if (verdict.guard !== 'human' || !/^(auto_review|guardian_subagent)$/.test(cfg.reviewer.value)) return verdict;
+    return { guard: 'model', reason: `${verdict.reason}; approvals_reviewer = ${cfg.reviewer.value} lets a subagent answer` };
   };
   const show = (probe) => {
     if (probe.show) return probe.show;
