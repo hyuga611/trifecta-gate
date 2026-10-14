@@ -36,5 +36,9 @@
   "author": "hyuga611",
   "engines": {
     "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/hyuga611/trifecta-gate.git"
   }
 }

@@ -37,6 +37,31 @@ Cursor — IDE run mode: auto-review (assumed; pass --cursor-mode, or --user to 
 
 Each agent's line counts, leg by leg, the ways it can take that leg and what guards each one.
 
+Two lines are enough to open a path. [Pull request #1][pr1] allowed the agent to read issues
+and to call the GitHub API:
+
+```diff
++    "allow": [
++      "Bash(gh issue view:*)",
++      "Bash(gh api:*)"
++    ]
+```
+
+Each rule looks like a read-only convenience, but `gh api` writes when given `-f`. Together they
+let an issue tell the agent to read `.env` and post it as a comment. The gate job failed the PR:
+
+```console
+  FAIL  main: private data 6 open · untrusted content 1 open, 4 model · external send 1 open, 4 model
+        weakest path — nothing stops it:
+          private data       open   Read ./.env
+                                    ↳ reads inside a working directory need no approval
+          untrusted content  open   gh issue view 1
+                                    ↳ allow rule Bash(gh issue view:*) in ./.claude/settings.json
+          external send      open   gh api repos/o/r/issues/1/comments -f body="<secret>"
+                                    ↳ allow rule Bash(gh api:*) in ./.claude/settings.json
+Error: Process completed with exit code 1.
+```
+
 ## What it reads
 
 **Claude Code** — [permission rules][perms] and [modes][modes]
@@ -150,6 +175,7 @@ It exits 1 when a path fails, and 2 when a configuration file cannot be parsed: 
 file the gate cannot read is one it cannot vouch for.
 
 [trifecta]: https://simonwillison.net/2025/Jun/16/the-lethal-trifecta/
+[pr1]: https://github.com/hyuga611/trifecta-gate/pull/1
 [perms]: https://code.claude.com/docs/en/permissions
 [modes]: https://code.claude.com/docs/en/permission-modes
 [codex-rules]: https://learn.chatgpt.com/docs/agent-configuration/rules
