@@ -1,0 +1,64 @@
+name: release
+
+# Publishes to npm through trusted publishing, so no npm token is stored anywhere.
+# One-time setup on npmjs.com: trifecta-gate -> Settings -> Trusted publisher ->
+# GitHub Actions, user hyuga611, repository trifecta-gate, workflow release.yml,
+# with npm publish allowed. A new configuration expires unless a publish succeeds
+# within 2 days, so set it up when the next version is ready to tag.
+#
+# Release: bump the version in package.json, commit, push a tag v<version>.
+# Run it by hand (workflow_dispatch) to check everything without publishing.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ci:
+    uses: ./.github/workflows/ci.yml
+
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: The tag, package.json and --version agree
+        if: github.ref_type == 'tag'
+        run: |
+          tag="${GITHUB_REF_NAME#v}"
+          pkg=$(node -p "require('./package.json').version")
+          cli=$(node src/check.mjs --version)
+          echo "tag=$tag package.json=$pkg --version=$cli"
+          test "$tag" = "$pkg" && test "$tag" = "$cli"
+      - name: The tarball holds only the license, readme, manifest and src/*.mjs
+        run: |
+          npm pack --dry-run --json | node -e '
+            const files = JSON.parse(require("fs").readFileSync(0, "utf8"))[0].files.map(f => f.path);
+            const extra = files.filter(p => !/^(LICENSE|README\.md|package\.json|src\/[a-z]+\.mjs)$/.test(p));
+            console.log(files.join("\n"));
+            if (extra.length) { console.error("unexpected in the package: " + extra.join(", ")); process.exit(1); }'
+
+  publish:
+    needs: [ci, verify]
+    if: github.ref_type == 'tag'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          registry-url: https://registry.npmjs.org
+      - run: npm publish
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --generate-notes

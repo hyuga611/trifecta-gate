@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -30,8 +31,8 @@ jobs:
       - name: examples/bad fails and examples/good passes, as installed from the package
         shell: bash
         run: |
-          npm pack --silent
-          gate() { npx --yes --package=./trifecta-gate-0.1.0.tgz trifecta-gate "$@" > /dev/null; }
+          tgz=$(npm pack --silent)
+          gate() { npx --yes --package="./$tgz" trifecta-gate "$@" > /dev/null; }
           set +e
           gate examples/bad; bad=$?
           gate examples/good; good=$?
