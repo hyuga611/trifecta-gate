@@ -1,6 +1,6 @@
 {
   "name": "trifecta-gate",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Fail CI when one AI agent can read your secrets, read an attacker's text, and send data out — the lethal trifecta, found statically in Claude Code, Codex and Cursor configuration. Zero-dependency, nothing leaves your machine.",
   "type": "module",
   "bin": {
