@@ -10,7 +10,8 @@
     ".": "./src/scan.mjs",
     "./load": "./src/load.mjs",
     "./codex": "./src/codex.mjs",
-    "./cursor": "./src/cursor.mjs"
+    "./cursor": "./src/cursor.mjs",
+    "./hidden": "./src/hidden.mjs"
   },
   "files": [
     "src"

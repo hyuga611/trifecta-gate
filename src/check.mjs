@@ -7,6 +7,7 @@ import { CURSOR_MODES, loadCursor, scanCursor } from './cursor.mjs';
 import { GUARDS, rank } from './legs.mjs';
 import { loadConfig } from './load.mjs';
 import { scan } from './scan.mjs';
+import { scanHidden } from './hidden.mjs';
 
 const VERSION = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version;
 
@@ -16,7 +17,9 @@ Usage: trifecta-gate [dir] [options]
 
 Reads the agent configuration of a project (and with --user, your own) for Claude Code,
 Codex and Cursor, and finds every agent that holds all three legs of the lethal trifecta.
-Nothing is sent anywhere.
+It also scans the project's instruction files (CLAUDE.md, AGENTS.md, skills, commands,
+Cursor rules, Codex instructions, issue and PR templates) for instructions hidden from a
+human reviewer. Nothing is sent anywhere.
 
 Options:
   --user                 also read your own configuration: ~/.claude, ~/.claude.json,
@@ -122,6 +125,20 @@ function formatUnit(unit, failOn, verbose) {
   return lines;
 }
 
+function formatHidden(hidden, verbose) {
+  const lines = ['', `Hidden instructions — ${hidden.scanned} instruction file(s) scanned`];
+  if (!hidden.findings.length) {
+    lines.push('  ok    no hidden instructions found');
+    return lines;
+  }
+  for (const f of hidden.findings) {
+    lines.push(`  FAIL  ${f.file}:${f.line}  ${f.kind} — ${f.label}`);
+    if (f.detail) lines.push(`        ${f.detail}`);
+    if (verbose) lines.push(`        ↳ ${f.excerpt}`);
+  }
+  return lines;
+}
+
 export function formatReport(result, opts) {
   const out = [`trifecta-gate ${VERSION}`];
   for (const p of result.platforms) {
@@ -133,12 +150,14 @@ export function formatReport(result, opts) {
     }
     out.push(...p.notes.map((n) => `  note: ${n}`));
   }
+  if (result.hidden) out.push(...formatHidden(result.hidden, opts.verbose));
   if (result.notes.length) out.push('', ...result.notes.map((n) => `note: ${n}`));
   return out.join('\n');
 }
 
 export function failed(result, failOn) {
-  return result.platforms.some((p) => [...p.agents, ...p.skills].some((u) => u.weakest && rank(u.weakest.guard) <= rank(failOn)));
+  const trifecta = result.platforms.some((p) => [...p.agents, ...p.skills].some((u) => u.weakest && rank(u.weakest.guard) <= rank(failOn)));
+  return trifecta || Boolean(result.hidden?.findings.length);
 }
 
 export function run(opts) {
@@ -148,11 +167,12 @@ export function run(opts) {
   const cursor = loadCursor({ root, user, mode: opts.cursorMode });
   const problems = [claude, codex, cursor].flatMap((c) => c?.problems ?? []);
   const platforms = [scan(claude), ...(codex ? [scanCodex(codex)] : []), ...(cursor ? [scanCursor(cursor)] : [])];
+  const hidden = scanHidden({ root });
   const notes = [];
   if (user && claude.missingSecrets.length) {
     notes.push(`Only secrets that exist on disk were counted. Not found: ${claude.missingSecrets.join(', ')}.`);
   }
-  return { problems, result: { platforms, notes } };
+  return { problems, result: { platforms, hidden, notes } };
 }
 
 export function main(argv, io = { log: console.log, error: console.error }) {
@@ -196,4 +216,4 @@ function runDirectly() {
   }
 }
 
-if (runDirectly()) process.exit(main(process.argv.slice(2)));
+if (runDirectly()) Promise.resolve(main(process.argv.slice(2))).then((code) => process.exit(code));
